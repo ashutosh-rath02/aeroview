@@ -1272,12 +1272,9 @@ export class Renderer {
     ctx.font = `400 15px ${cfg.fonts.label}`;
     const dimColor = rgba(hexToRgb(cfg.palette.text), 0.8);
 
-    // Line 1: airline · aircraft type · registration
-    const line1 = [
-      ac.airline,
-      ac.typeName ?? ac.typeCode,
-      ac.registration,
-    ].filter(Boolean).join("  ·  ");
+    // Line 1: airline · type · registration
+    const line1 = [ac.airline, ac.typeName ?? ac.typeCode, ac.registration]
+      .filter(Boolean).join("  ·  ");
     ctx.fillStyle = rgba([255, 255, 255], 0.95);
     if (line1) ctx.fillText(line1, x, y + 26);
 
@@ -1303,9 +1300,13 @@ export class Renderer {
       }
     }
 
-    // Line 4: distance to observer
-    ctx.fillStyle = rgba(hexToRgb(cfg.palette.text), 0.6);
-    ctx.fillText(`${v.rangeMi.toFixed(1)} mi from you`, x, y + 84);
+    // Line 4: distance now + closest approach
+    const approach = closestApproach(v.sample.m, ac);
+    const distLine = approach
+      ? `${v.rangeMi.toFixed(1)} mi now  ·  ${approach}`
+      : `${v.rangeMi.toFixed(1)} mi from you`;
+    ctx.fillStyle = rgba([120, 220, 160], 0.85);
+    ctx.fillText(distLine, x, y + 86);
 
     try { ctx.letterSpacing = "0px"; } catch { /* noop */ }
     ctx.restore();
@@ -1314,6 +1315,40 @@ export class Renderer {
 
 function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+const CARDINALS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+
+/**
+ * Dead-reckon the aircraft forward and find its closest pass to the observer
+ * (origin of the Meters coordinate system). Returns a human string like
+ * "overhead in 45s" or "closest 3.2mi NE in 2min" — null when speed/track
+ * are unknown or the plane is already past its closest point.
+ */
+function closestApproach(m: Meters, ac: Aircraft): string | null {
+  if (!ac.gs || !ac.track || ac.onGround) return null;
+  const STEP = 5;       // seconds per step
+  const MAX  = 20 * 60; // look 20 minutes ahead
+  let pos = { ...m };
+  let bestDist = rangeMeters(pos);
+  let bestSec  = 0;
+  let bestPos  = { ...pos };
+  for (let t = STEP; t <= MAX; t += STEP) {
+    pos = deadReckon(pos, ac.track, ac.gs, STEP);
+    const d = rangeMeters(pos);
+    if (d < bestDist) { bestDist = d; bestSec = t; bestPos = { ...pos }; }
+    // Once distance starts growing for 60s after the minimum, stop early.
+    else if (bestSec > 0 && t - bestSec > 60) break;
+  }
+  if (bestSec === 0) return null; // already past closest point
+  const bestMi = bestDist / 1609.34;
+  const mins   = Math.floor(bestSec / 60);
+  const secs   = bestSec % 60;
+  const timeStr = mins > 0 ? `${mins}min ${secs}s` : `${secs}s`;
+  if (bestMi < 0.3) return `overhead in ${timeStr}`;
+  const bearingDeg = (Math.atan2(bestPos.east, bestPos.north) * 180 / Math.PI + 360) % 360;
+  const dir = CARDINALS[Math.round(bearingDeg / 45) % 8];
+  return `closest ${bestMi.toFixed(1)}mi ${dir} in ${timeStr}`;
 }
 
 /** Stable per-aircraft phase offset (0..2π) so props/rotors aren't all in sync. */

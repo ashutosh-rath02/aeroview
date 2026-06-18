@@ -12,10 +12,8 @@ import { ConfigStore, ConfigValidationError } from "./config-store.js";
 import { RouteEnricher } from "./enrich/routes.js";
 import { Poller } from "./datasource.js";
 import { Hub } from "./hub.js";
-import { TleStore } from "./tle.js";
 import { resolveLocation } from "./geocode.js";
 import { buildHostMatcher, originHostname } from "./allowed-hosts.js";
-import { SfoGroundPoller } from "./sfo-ground.js";
 import { lookupAirport } from "./airports.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -64,9 +62,6 @@ async function main(): Promise<void> {
   );
   await enricher.load();
 
-  const tleStore = new TleStore(resolve(DATA_DIR, "tle-cache.json"));
-  await tleStore.load();
-
   const app = express();
 
   // DNS-rebinding gate. Untrusted browsers can resolve attacker.com to the
@@ -98,7 +93,6 @@ async function main(): Promise<void> {
     store,
     getSnapshot: () => poller.getSnapshot(),
     getStatus: () => poller.getStatus(),
-    getSfoGround: () => sfoGround.getSnapshot(),
     isOriginAllowed: (origin) => {
       // No Origin header: not a browser (curl/scripts). Allow — the WS
       // hijack risk is browser-only.
@@ -120,13 +114,7 @@ async function main(): Promise<void> {
     onStatus: (status) => hub.broadcastStatus(status),
   });
 
-  // SFO surface traffic (airplanes.live) — the "who's next" panel on the TV
-  // and Twitch stream. Local receiver can't hear ground targets at 13 mi.
-  const sfoGround = new SfoGroundPoller((at, aircraft) =>
-    hub.broadcastSfoGround(at, aircraft),
-  );
-
-  // --- REST API (handy for debugging + non-WS clients) ---
+  // --- REST API ---
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
   app.get("/api/config", (_req, res) => res.json(store.get()));
   app.post("/api/config", (req, res) => {
@@ -142,7 +130,6 @@ async function main(): Promise<void> {
   app.post("/api/config/reset", (_req, res) => res.json(store.reset()));
   app.get("/api/aircraft", (_req, res) => res.json(poller.getSnapshot()));
   app.get("/api/status", (_req, res) => res.json(poller.getStatus()));
-  app.get("/api/tle", async (_req, res) => res.json(await tleStore.get()));
   app.post("/api/source", (req, res) => {
     const s = req.body?.source;
     if (s !== "radio" && s !== "api") {
@@ -166,9 +153,7 @@ async function main(): Promise<void> {
     }
   });
 
-  // Resolve an ICAO/IATA airport code to runway geometry (OurAirports data)
-  // for the ceiling's runway overlay. The control panel patches the result
-  // into config.airport.
+  // Resolve an ICAO/IATA airport code to runway geometry (OurAirports data).
   app.get("/api/airport", async (req, res) => {
     const code = String(req.query.code ?? "").trim();
     if (!code) return res.status(400).json({ error: "missing query parameter code" });
@@ -193,7 +178,6 @@ async function main(): Promise<void> {
   }
 
   poller.start();
-  sfoGround.start();
 
   server.listen(PORT, HOST, () => {
     console.log(`[server] listening on http://${HOST}:${PORT}`);

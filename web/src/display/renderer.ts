@@ -482,10 +482,11 @@ export class Renderer {
     const hM = this.horizonM(cfg);
     const skyMode = cfg.projectionMode === "sky";
 
-    if (cfg.rangeRings) {
+    if (cfg.gridMode && !skyMode) {
+      this.drawGrid(cfg, proj, cx, cy);
+    } else if (cfg.rangeRings) {
       ctx.save();
       if (skyMode) {
-        // Elevation contours on the look-up dome (15° … 75° above horizon).
         for (const elev of [15, 30, 45, 60, 75]) {
           const r = (1 - elev / 90) * hM * proj.pxPerM;
           ctx.beginPath();
@@ -552,6 +553,57 @@ export class Renderer {
       }
       ctx.restore();
     }
+  }
+
+  private drawGrid(cfg: Config, proj: ProjOpts, cx: number, cy: number): void {
+    const ctx = this.ctx;
+    const milePx = 1609.34 * proj.pxPerM;
+    const gridColor = hexToRgb(cfg.palette.grid);
+    const textColor = hexToRgb(cfg.palette.text);
+    const maxMiles = Math.ceil(cfg.radiusMiles) + 1;
+
+    ctx.save();
+    ctx.lineWidth = 1;
+
+    // Minor grid lines (dashed, 1-mile spacing)
+    ctx.setLineDash([2, 6]);
+    ctx.strokeStyle = rgba(gridColor, 0.28 * cfg.brightness);
+    for (let n = -maxMiles; n <= maxMiles; n++) {
+      if (n === 0) continue;
+      const x = cx + n * milePx;
+      const y = cy + n * milePx;
+      if (x >= 0 && x <= this.w) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, this.h); ctx.stroke();
+      }
+      if (y >= 0 && y <= this.h) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(this.w, y); ctx.stroke();
+      }
+    }
+
+    // Center axes (solid, slightly brighter)
+    ctx.setLineDash([]);
+    ctx.strokeStyle = rgba(gridColor, 0.5 * cfg.brightness);
+    ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, this.h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(this.w, cy); ctx.stroke();
+
+    // Distance labels along the axes
+    ctx.font = `300 9px ${cfg.fonts.mono}`;
+    ctx.fillStyle = rgba(textColor, 0.3 * cfg.brightness);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (let n = 1; n <= maxMiles; n++) {
+      const label = `${n}mi`;
+      const px = cx + n * milePx;
+      const nx = cx - n * milePx;
+      const py = cy + n * milePx;
+      const ny = cy - n * milePx;
+      if (px <= this.w) ctx.fillText(label, px, cy + 10);
+      if (nx >= 0)      ctx.fillText(label, nx, cy + 10);
+      if (py <= this.h) ctx.fillText(label, cx + 16, py);
+      if (ny >= 0)      ctx.fillText(label, cx + 16, ny);
+    }
+
+    ctx.restore();
   }
 
   // --- airport: runways at true geographic position ---

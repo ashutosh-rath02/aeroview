@@ -405,6 +405,9 @@ export function Control() {
         </Section>
 
         <Section title="Overlays">
+          <Row label="Grid mode" hint="Square grid instead of range rings">
+            <Toggle value={cfg.gridMode} onChange={(v) => set({ gridMode: v })} />
+          </Row>
           <Row label="Range rings">
             <Toggle value={cfg.rangeRings} onChange={(v) => set({ rangeRings: v })} />
           </Row>

@@ -79,6 +79,7 @@ export interface Config {
   speedUnit: SpeedUnit;
 
   rangeRings: boolean;
+  gridMode: boolean;
   compass: boolean;
   highlightEmergency: boolean;
   showAirport: boolean;
@@ -158,6 +159,7 @@ export const DEFAULT_CONFIG: Config = {
   speedUnit: "kt",
 
   rangeRings: true,
+  gridMode: false,
   compass: true,
   highlightEmergency: true,
   showAirport: true,

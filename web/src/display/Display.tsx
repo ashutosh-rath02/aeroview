@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { Config, Theme } from "@shared/index.js";
 import { DEFAULT_CONFIG } from "@shared/index.js";
 import { useStream } from "../lib/useStream.js";
@@ -161,6 +161,29 @@ export function Display() {
   }, [conn]);
 
   const cfg = state.config;
+
+  const stats = useMemo(() => {
+    if (!cfg) return null;
+    const cos = Math.cos(cfg.centerLat * Math.PI / 180);
+    const positioned = state.aircraft.filter(
+      (a) => a.lat != null && a.lon != null,
+    );
+    if (!positioned.length) return null;
+    const withDist = positioned.map((a) => {
+      const dLat = a.lat! - cfg.centerLat;
+      const dLon = (a.lon! - cfg.centerLon) * cos;
+      return { a, mi: Math.sqrt(dLat * dLat + dLon * dLon) * 69 };
+    });
+    const nearest = withDist.reduce((x, y) => (x.mi < y.mi ? x : y));
+    const fastest = positioned.reduce((x, y) =>
+      (y.gs ?? 0) > (x.gs ?? 0) ? y : x,
+    );
+    const highest = positioned.reduce((x, y) =>
+      ((y.altBaro ?? y.altGeom ?? 0) > (x.altBaro ?? x.altGeom ?? 0) ? y : x),
+    );
+    return { count: positioned.length, nearest, fastest, highest };
+  }, [state.aircraft, cfg]);
+
   return (
     <div className="display-root">
       <canvas ref={canvasRef} className="display-canvas" />
@@ -171,6 +194,29 @@ export function Display() {
             {state.status?.source ?? "—"} · {state.aircraft.length} ac ·{" "}
             rot {cfg.rotationDeg}° · mirror {cfg.mirrorX ? "X" : "–"}
             {cfg.mirrorY ? "Y" : ""} · r {cfg.radiusMiles}mi · {cfg.projectionMode} · {cfg.theme}
+          </span>
+        </div>
+      )}
+      {stats && (
+        <div className="stats-strip">
+          <span className="stats-count">{stats.count} visible</span>
+          <span className="stats-sep">·</span>
+          <span>
+            nearest&nbsp;
+            <strong>{stats.nearest.a.flight ?? stats.nearest.a.hex.toUpperCase()}</strong>
+            &nbsp;{stats.nearest.mi.toFixed(1)} mi
+          </span>
+          <span className="stats-sep">·</span>
+          <span>
+            fastest&nbsp;
+            <strong>{stats.fastest.flight ?? stats.fastest.hex.toUpperCase()}</strong>
+            &nbsp;{Math.round(stats.fastest.gs ?? 0)} kt
+          </span>
+          <span className="stats-sep">·</span>
+          <span>
+            highest&nbsp;
+            <strong>{stats.highest.flight ?? stats.highest.hex.toUpperCase()}</strong>
+            &nbsp;{((stats.highest.altBaro ?? stats.highest.altGeom ?? 0) / 1000).toFixed(0)}k ft
           </span>
         </div>
       )}

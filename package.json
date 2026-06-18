@@ -1,8 +1,8 @@
 {
-  "name": "skylight",
-  "version": "0.1.0",
+  "name": "aeroview",
+  "version": "1.0.0",
   "private": true,
-  "description": "Skylight — project the aircraft passing overhead onto your ceiling, in real time, from an RTL-SDR.",
+  "description": "AeroView — my personal real-time aircraft radar.",
   "type": "module",
   "packageManager": "pnpm@10.28.2",
   "scripts": {

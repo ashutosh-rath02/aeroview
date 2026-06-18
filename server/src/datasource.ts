@@ -2,10 +2,25 @@
 // into our Aircraft shape, enrich them, and emit snapshots. dump1090-fa and
 // airplanes.live both use the readsb JSON schema, so one normalizer covers both.
 
+import dns from "node:dns";
+import { Agent, setGlobalDispatcher } from "undici";
 import type { Aircraft, Config, DataSource } from "@shared/index.js";
 import type { SourceStatus } from "@shared/index.js";
 import { lookupAirline, lookupType } from "./enrich/tables.js";
 import type { RouteEnricher } from "./enrich/routes.js";
+
+// Prefer IPv4 — undici tries IPv6 first on dual-stack hosts, which can cause
+// hangs when IPv6 routing to the remote is broken (common on home/office NAT).
+dns.setDefaultResultOrder("ipv4first");
+// Extend undici's default 10 s connect timeout for high-latency networks.
+// keepAliveTimeout default is 4 s — shorter than our poll interval, so every
+// poll was a cold TCP handshake (~10-30 s from India). 60 s keeps the
+// connection warm across polls.
+setGlobalDispatcher(new Agent({
+  connect: { timeout: 30_000 },
+  keepAliveTimeout: 60_000,
+  keepAliveMaxTimeout: 300_000,
+}));
 
 /** Raw readsb-style aircraft record (subset we use). */
 interface RawAircraft {
@@ -53,7 +68,7 @@ function normalize(raw: RawAircraft, ts: number): Aircraft | null {
 const NM_PER_MILE = 0.868976;
 
 async function fetchJson(url: string): Promise<any> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -65,7 +80,7 @@ async function fetchJson(url: string): Promise<any> {
  */
 function describeFetchError(e: unknown): string {
   if (!(e instanceof Error)) return "fetch failed";
-  if (e.name === "TimeoutError" || e.name === "AbortError") return "timeout after 5s";
+  if (e.name === "TimeoutError" || e.name === "AbortError") return "timeout after 30s";
   const code: string | undefined =
     (e.cause as { code?: string } | undefined)?.code ?? (e as { code?: string }).code;
   switch (code) {

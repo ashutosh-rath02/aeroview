@@ -55,7 +55,7 @@ export function Stream() {
   if (!state || !config) {
     return (
       <div className="stream-boot">
-        <div className="stream-boot-mark">SKYLIGHT</div>
+        <div className="stream-boot-mark">AEROVIEW</div>
       </div>
     );
   }
@@ -116,7 +116,7 @@ export function Stream() {
         ) : (
           <div className="stream-card idle">
             <div className="stream-card-tag scanning">SCANNING</div>
-            <div className="stream-flight idle-mark">SKYLIGHT</div>
+            <div className="stream-flight idle-mark">AEROVIEW</div>
             <div className="stream-idle-sub">
               watching the sky · {state.upstream.aircraftCount} aircraft on the radio
             </div>
@@ -175,7 +175,7 @@ export function Stream() {
         <div className="stream-radar-scope">
           <SkyPolar state={state} config={config} onPick={() => {}} />
         </div>
-        <div className="stream-wordmark">skylightceiling.com</div>
+        <div className="stream-wordmark">AeroView · My personal radar</div>
       </section>
     </div>
   );

@@ -37,7 +37,7 @@ const API_POLL_MS = Number(process.env.API_POLL_MS ?? 4000);
 // Nominatim asks for a descriptive User-Agent identifying the application.
 const GEOCODE_UA =
   process.env.GEOCODE_USER_AGENT ??
-  "skylight/0.1 (https://github.com/cpaczek/skylight)";
+  "aeroview/1.0 (personal radar)";
 const CONFIG_PATH = resolve(DATA_DIR, "config.json");
 const SERVER_DEFAULT_CONFIG: Config = { ...DEFAULT_CONFIG, radioUrl: RADIO_URL };
 

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shared types + pure math (geo, aim, celestial) for Skylight.",
+  "description": "Shared types + pure math (geo, aim, celestial) for AeroView.",
   "scripts": {
     "typecheck": "tsc"
   },

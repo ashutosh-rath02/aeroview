@@ -142,6 +142,8 @@ export class Renderer {
    *  the staleness clock pauses so a transient fetch failure doesn't wipe the
    *  sky and re-spawn everything seconds later (#24). */
   private sourceDownAt: number | null = null;
+  private lastVisible: Visible[] = [];
+  private hoveredHex: string | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -189,6 +191,17 @@ export class Renderer {
   }
   stop(): void {
     cancelAnimationFrame(this.raf);
+  }
+
+  /** Call from a mousemove handler with canvas-local coordinates. */
+  setHover(x: number, y: number): void {
+    let bestHex: string | null = null;
+    let bestDist = 24;
+    for (const v of this.lastVisible) {
+      const d = Math.hypot(v.p.x - x, v.p.y - y);
+      if (d < bestDist) { bestDist = d; bestHex = v.tr.ac.hex; }
+    }
+    this.hoveredHex = bestHex;
   }
 
   resize(): void {
@@ -394,8 +407,11 @@ export class Renderer {
     // Nearest last so it paints on top.
     visible.sort((a, b) => b.rangeMi - a.rangeMi);
 
+    this.lastVisible = visible;
+
     // Trails + glyphs for everyone.
     if (cfg.showDestArc) for (const v of visible) this.drawDestArc(cfg, proj, v);
+    for (const v of visible) this.drawProjectedPath(cfg, proj, v);
     for (const v of visible) this.drawTrail(cfg, proj, v, tt);
     for (const v of visible) this.drawGlyph(cfg, v);
 
@@ -486,13 +502,11 @@ export class Renderer {
         }
         ctx.setLineDash([]);
       }
-      // Zenith mark.
-      ctx.beginPath();
-      ctx.arc(cx, cy, 2, 0, Math.PI * 2);
-      ctx.fillStyle = rgba(hexToRgb(cfg.palette.grid), 0.7 * cfg.brightness);
-      ctx.fill();
       ctx.restore();
     }
+
+    // Location marker — crosshair + label at the observer's position.
+    this.drawLocationMarker(cfg, cx, cy);
 
     if (cfg.compass) {
       ctx.save();
@@ -885,15 +899,55 @@ export class Renderer {
     ctx.restore();
   }
 
+  // --- projected path: dashed line 5 min ahead ---
+  private drawProjectedPath(cfg: Config, proj: ProjOpts, v: Visible): void {
+    if (!v.tr.ac.track || !v.tr.ac.gs) return;
+    const ctx = this.ctx;
+    const steps = 8;
+    const horizonSec = 300;
+    const dt = horizonSec / steps;
+    let m = v.sample.m;
+    const pts: Point[] = [v.p];
+    for (let i = 1; i <= steps; i++) {
+      m = deadReckon(m, v.tr.ac.track, v.tr.ac.gs, dt);
+      pts.push(this.toPoint({ m, altFt: v.sample.altFt }, cfg, proj, v.tr));
+    }
+    ctx.save();
+    ctx.setLineDash([3, 7]);
+    ctx.lineCap = "round";
+    for (let i = 1; i < pts.length; i++) {
+      const f = i / pts.length;
+      ctx.strokeStyle = rgba(v.color, (0.28 - f * 0.22) * v.alpha);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+      ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
   // --- glyph: type-aware luminous silhouette ---
   private drawGlyph(cfg: Config, v: Visible): void {
     const ctx = this.ctx;
+    const isHovered = this.hoveredHex === v.tr.ac.hex;
     const color = v.emergency ? hexToRgb(cfg.palette.warn) : v.color;
     const kind = classifyGlyph(v.tr.ac);
     const s = cfg.glyphSizePx * GLYPH_SCALE[kind] * v.sizeScale;
 
     ctx.save();
     ctx.translate(v.p.x, v.p.y);
+
+    // Hover ring — drawn before rotation so it stays circular.
+    if (isHovered) {
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 2.2, 0, Math.PI * 2);
+      ctx.strokeStyle = rgba(color, 0.7 * v.alpha);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
     ctx.rotate(v.heading + Math.PI / 2);
 
     // Soft halo — restrained so the silhouette reads as an aircraft.
@@ -1083,6 +1137,29 @@ export class Renderer {
       }
       ctx.restore();
     });
+  }
+
+  private drawLocationMarker(cfg: Config, cx: number, cy: number): void {
+    const ctx = this.ctx;
+    const b = cfg.brightness;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+    ctx.fillStyle = rgba([255, 55, 55], 0.95 * b);
+    ctx.shadowColor = "rgba(255,55,55,0.55)";
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    const label = cfg.locationName || "You";
+    ctx.font = `400 11px ${cfg.fonts.label}`;
+    ctx.fillStyle = rgba([255, 120, 120], 0.8 * b);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.shadowColor = "rgba(0,0,0,0.9)";
+    ctx.shadowBlur = 5;
+    ctx.fillText(label, cx, cy + 8);
+    ctx.shadowBlur = 0;
+    ctx.restore();
   }
 
   private drawDetailPanel(cfg: Config, v: Visible): void {

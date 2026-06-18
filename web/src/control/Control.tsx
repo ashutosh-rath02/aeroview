@@ -180,7 +180,7 @@ export function Control() {
       <header className="topbar">
         <div className="brand">
           <span className={`dot ${state.connected ? "ok" : "bad"}`} />
-          Ceiling Tracker
+          AeroView
         </div>
         <div className="stat">
           {state.status?.source ?? "—"} · {state.aircraft.length} overhead{statusMessage}

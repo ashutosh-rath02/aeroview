@@ -103,7 +103,7 @@ export function Tv() {
   if (!state || !config) {
     return (
       <div className="tv-boot">
-        <div className="tv-boot-mark">SKYLIGHT</div>
+        <div className="tv-boot-mark">AEROVIEW</div>
       </div>
     );
   }
@@ -244,7 +244,7 @@ export function Tv() {
         ) : (
           <>
             <div className="tv-card-tag scanning">SCANNING</div>
-            <div className="tv-flight idle-mark">SKYLIGHT</div>
+            <div className="tv-flight idle-mark">AEROVIEW</div>
             <div className="tv-idle-sub">
               watching the sky · {state.upstream.aircraftCount} aircraft on the radio
             </div>

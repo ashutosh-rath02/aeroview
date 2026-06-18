@@ -144,6 +144,7 @@ export class Renderer {
   private sourceDownAt: number | null = null;
   private lastVisible: Visible[] = [];
   private hoveredHex: string | null = null;
+  private pinnedHex: string | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -202,6 +203,17 @@ export class Renderer {
       if (d < bestDist) { bestDist = d; bestHex = v.tr.ac.hex; }
     }
     this.hoveredHex = bestHex;
+  }
+
+  /** Call from a click handler — pins/unpins the nearest aircraft. */
+  togglePin(x: number, y: number): void {
+    let bestHex: string | null = null;
+    let bestDist = 36;
+    for (const v of this.lastVisible) {
+      const d = Math.hypot(v.p.x - x, v.p.y - y);
+      if (d < bestDist) { bestDist = d; bestHex = v.tr.ac.hex; }
+    }
+    this.pinnedHex = bestHex === this.pinnedHex ? null : bestHex;
   }
 
   resize(): void {
@@ -420,6 +432,8 @@ export class Renderer {
     this.drawLabels(cfg, byNear);
 
     if (cfg.theme === "focus" && byNear.length) this.drawDetailPanel(cfg, byNear[0]);
+    const pinned = this.pinnedHex ? visible.find((v) => v.tr.ac.hex === this.pinnedHex) : null;
+    if (pinned) this.drawDetailPanel(cfg, pinned);
   }
 
   /**
@@ -932,6 +946,7 @@ export class Renderer {
   private drawGlyph(cfg: Config, v: Visible): void {
     const ctx = this.ctx;
     const isHovered = this.hoveredHex === v.tr.ac.hex;
+    const isPinned = this.pinnedHex === v.tr.ac.hex;
     const color = v.emergency ? hexToRgb(cfg.palette.warn) : v.color;
     const kind = classifyGlyph(v.tr.ac);
     const s = cfg.glyphSizePx * GLYPH_SCALE[kind] * v.sizeScale;
@@ -939,8 +954,22 @@ export class Renderer {
     ctx.save();
     ctx.translate(v.p.x, v.p.y);
 
+    // Pinned ring — solid bright outer ring.
+    if (isPinned) {
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 3.0, 0, Math.PI * 2);
+      ctx.strokeStyle = rgba([255, 255, 255], 0.9);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 2.6, 0, Math.PI * 2);
+      ctx.strokeStyle = rgba(color, 0.5);
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+
     // Hover ring — drawn before rotation so it stays circular.
-    if (isHovered) {
+    if (isHovered && !isPinned) {
       ctx.beginPath();
       ctx.arc(0, 0, s * 2.2, 0, Math.PI * 2);
       ctx.strokeStyle = rgba(color, 0.7 * v.alpha);
@@ -1165,7 +1194,7 @@ export class Renderer {
   private drawDetailPanel(cfg: Config, v: Visible): void {
     const ac = v.tr.ac;
     const x = 40;
-    const y = this.h - 120;
+    const y = this.h - 160;
     this.withLabelRotation(cfg, x, y, () => this.drawDetailPanelText(cfg, v, ac, x, y));
   }
 
@@ -1173,38 +1202,60 @@ export class Renderer {
     const ctx = this.ctx;
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.9)";
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 12;
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
-    try {
-      ctx.letterSpacing = "2px";
-    } catch {
-      /* noop */
-    }
-    ctx.font = `300 34px ${cfg.fonts.label}`;
-    ctx.fillStyle = rgba([245, 247, 255], v.alpha);
-    ctx.fillText(ac.flight ?? ac.hex.toUpperCase(), x, y);
-    try {
-      ctx.letterSpacing = "0.5px";
-    } catch {
-      /* noop */
-    }
-    ctx.font = `400 15px ${cfg.fonts.label}`;
-    ctx.fillStyle = rgba(hexToRgb(cfg.palette.text), 0.85 * v.alpha);
+
+    // Callsign + altitude trend arrow
     const dpAlt = ac.altBaro ?? ac.altGeom;
-    const bits = [
+    const trend = ac.baroRate != null
+      ? ac.baroRate > 150 ? " ↑" : ac.baroRate < -150 ? " ↓" : " →"
+      : "";
+    try { ctx.letterSpacing = "2px"; } catch { /* noop */ }
+    ctx.font = `300 34px ${cfg.fonts.label}`;
+    ctx.fillStyle = rgba([245, 247, 255], 1.0);
+    ctx.fillText((ac.flight ?? ac.hex.toUpperCase()) + trend, x, y);
+
+    try { ctx.letterSpacing = "0.5px"; } catch { /* noop */ }
+    ctx.font = `400 15px ${cfg.fonts.label}`;
+    const dimColor = rgba(hexToRgb(cfg.palette.text), 0.8);
+
+    // Line 1: airline · aircraft type · registration
+    const line1 = [
       ac.airline,
       ac.typeName ?? ac.typeCode,
+      ac.registration,
+    ].filter(Boolean).join("  ·  ");
+    ctx.fillStyle = rgba([255, 255, 255], 0.95);
+    if (line1) ctx.fillText(line1, x, y + 26);
+
+    // Line 2: altitude · speed · vertical rate
+    ctx.fillStyle = dimColor;
+    const vr = ac.baroRate != null && Math.abs(ac.baroRate) > 50
+      ? `${ac.baroRate > 0 ? "+" : ""}${Math.round(ac.baroRate / 10) * 10} fpm`
+      : null;
+    const line2 = [
       ac.onGround ? "on ground" : dpAlt != null ? `${dpAlt.toLocaleString("en-US")} ft` : null,
       ac.gs != null ? formatSpeed(ac.gs, cfg.speedUnit) : null,
-      ac.origin && ac.destination && routePlausible(ac, cfg) ? `${ac.origin} → ${ac.destination}` : null,
-    ].filter(Boolean);
-    ctx.fillText(bits.join("    ·    "), x, y + 26);
-    try {
-      ctx.letterSpacing = "0px";
-    } catch {
-      /* noop */
+      vr,
+    ].filter(Boolean).join("  ·  ");
+    if (line2) ctx.fillText(line2, x, y + 46);
+
+    // Line 3: route with city names
+    if (routePlausible(ac, cfg)) {
+      const from = ac.originName ?? ac.origin;
+      const to = ac.destName ?? ac.destination;
+      if (from && to) {
+        ctx.fillStyle = rgba([180, 200, 255], 0.85);
+        ctx.fillText(`${from}  →  ${to}`, x, y + 66);
+      }
     }
+
+    // Line 4: distance to observer
+    ctx.fillStyle = rgba(hexToRgb(cfg.palette.text), 0.6);
+    ctx.fillText(`${v.rangeMi.toFixed(1)} mi from you`, x, y + 84);
+
+    try { ctx.letterSpacing = "0px"; } catch { /* noop */ }
     ctx.restore();
   }
 }

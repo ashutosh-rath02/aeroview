@@ -6,35 +6,7 @@ import { Renderer } from "./renderer.js";
 
 const THEMES: Theme[] = ["ambient", "telemetry", "focus"];
 
-const DEG = Math.PI / 180;
-function bearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const y = Math.sin((lon2 - lon1) * DEG) * Math.cos(lat2 * DEG);
-  const x = Math.cos(lat1 * DEG) * Math.sin(lat2 * DEG) -
-    Math.sin(lat1 * DEG) * Math.cos(lat2 * DEG) * Math.cos((lon2 - lon1) * DEG);
-  return (Math.atan2(y, x) / DEG + 360) % 360;
-}
-function angleDiff(a: number, b: number): number {
-  const d = ((a - b) + 360) % 360;
-  return d > 180 ? 360 - d : d;
-}
-
 let audioCtx: AudioContext | null = null;
-
-function beep(freq = 880, duration = 0.18): void {
-  try {
-    audioCtx ??= new AudioContext();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.frequency.value = freq;
-    osc.type = "sine";
-    gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-    osc.start();
-    osc.stop(audioCtx.currentTime + duration);
-  } catch { /* audio blocked */ }
-}
 
 /** Boeing-style autopilot disconnect: cavalry-charge G→C→E→G, played twice. */
 function apDisconnect(): void {
@@ -101,7 +73,7 @@ export function Display() {
     rendererRef.current?.setSourceOk(state.connected && (state.status?.ok ?? true));
   }, [state.connected, state.status]);
 
-  // Mouse hover — pass canvas-local coords to the renderer.
+  // Mouse hover + click — pass canvas-local coords to the renderer.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -110,11 +82,17 @@ export function Display() {
       rendererRef.current?.setHover(e.clientX - r.left, e.clientY - r.top);
     };
     const onLeave = () => rendererRef.current?.setHover(-999, -999);
+    const onClick = (e: MouseEvent) => {
+      const r = canvas.getBoundingClientRect();
+      rendererRef.current?.togglePin(e.clientX - r.left, e.clientY - r.top);
+    };
     canvas.addEventListener("mousemove", onMove);
     canvas.addEventListener("mouseleave", onLeave);
+    canvas.addEventListener("click", onClick);
     return () => {
       canvas.removeEventListener("mousemove", onMove);
       canvas.removeEventListener("mouseleave", onLeave);
+      canvas.removeEventListener("click", onClick);
     };
   }, []);
 

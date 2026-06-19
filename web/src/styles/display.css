@@ -63,6 +63,20 @@ body,
   font: 12px "JetBrains Mono", ui-monospace, monospace;
   color: #6b7280;
 }
+.fs-hint {
+  position: fixed;
+  top: 12px;
+  right: 14px;
+  font: 11px/1 "JetBrains Mono", ui-monospace, monospace;
+  color: #4a5568;
+  pointer-events: none;
+  animation: fadeout 4s forwards;
+}
+@keyframes fadeout {
+  0%   { opacity: 1; }
+  60%  { opacity: 1; }
+  100% { opacity: 0; }
+}
 .stats-strip {
   position: fixed;
   bottom: 0;

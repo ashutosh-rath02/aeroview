@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Config, Theme } from "@shared/index.js";
 import { DEFAULT_CONFIG } from "@shared/index.js";
 import { useStream } from "../lib/useStream.js";
@@ -42,6 +42,11 @@ export function Display() {
   const { state, conn } = useStream("display");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
+  const [showFsHint, setShowFsHint] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setShowFsHint(false), 4000);
+    return () => clearTimeout(t);
+  }, []);
 
   // Keep the latest config in a ref so the RAF loop always reads fresh values.
   const configRef = useRef<Config>(state.config ?? DEFAULT_CONFIG);
@@ -86,13 +91,22 @@ export function Display() {
       const r = canvas.getBoundingClientRect();
       rendererRef.current?.togglePin(e.clientX - r.left, e.clientY - r.top);
     };
+    const onDblClick = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.();
+      } else {
+        document.exitFullscreen?.();
+      }
+    };
     canvas.addEventListener("mousemove", onMove);
     canvas.addEventListener("mouseleave", onLeave);
     canvas.addEventListener("click", onClick);
+    canvas.addEventListener("dblclick", onDblClick);
     return () => {
       canvas.removeEventListener("mousemove", onMove);
       canvas.removeEventListener("mouseleave", onLeave);
       canvas.removeEventListener("click", onClick);
+      canvas.removeEventListener("dblclick", onDblClick);
     };
   }, []);
 
@@ -153,6 +167,14 @@ export function Display() {
           break;
         case "h":
           conn.patchConfig({ showHud: !c.showHud });
+          break;
+        case "f":
+        case "F":
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen?.();
+          } else {
+            document.exitFullscreen?.();
+          }
           break;
       }
     };
@@ -219,6 +241,9 @@ export function Display() {
             &nbsp;{((stats.highest.altBaro ?? stats.highest.altGeom ?? 0) / 1000).toFixed(0)}k ft
           </span>
         </div>
+      )}
+      {showFsHint && !document.fullscreenElement && (
+        <div className="fs-hint">press F or double-click for fullscreen</div>
       )}
       {!state.connected && <div className="reconnect">connecting…</div>}
     </div>

@@ -6,17 +6,17 @@
   "type": "module",
   "packageManager": "pnpm@10.28.2",
   "scripts": {
-    "dev": "concurrently -n server,web,tracker -c green,cyan,magenta \"pnpm dev:server\" \"pnpm dev:web\" \"pnpm dev:tracker\"",
+    "dev": "concurrently -n server,web -c green,cyan \"pnpm dev:server\" \"pnpm dev:web\"",
     "dev:server": "pnpm -F server dev",
     "dev:web": "pnpm -F web dev",
-    "dev:tracker": "pnpm -F tracker dev",
     "build": "pnpm -F web build",
     "start": "pnpm -F server start",
     "test": "vitest run",
-    "typecheck": "tsc -p shared/tsconfig.json && pnpm -F server typecheck && pnpm -F web typecheck && pnpm -F tracker typecheck"
+    "typecheck": "tsc -p shared/tsconfig.json && pnpm -F server typecheck && pnpm -F web typecheck"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
+    "cross-env": "^10.1.0",
     "playwright": "^1.60.0",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"

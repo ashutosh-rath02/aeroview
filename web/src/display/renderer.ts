@@ -431,7 +431,6 @@ export class Renderer {
     const byNear = [...visible].reverse(); // nearest first
     this.drawLabels(cfg, byNear);
 
-    if (cfg.theme === "focus" && byNear.length) this.drawDetailPanel(cfg, byNear[0]);
     const pinned = this.pinnedHex ? visible.find((v) => v.tr.ac.hex === this.pinnedHex) : null;
     if (pinned) this.drawDetailPanel(cfg, pinned);
   }

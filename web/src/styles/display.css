@@ -81,16 +81,25 @@ body,
   position: fixed;
   bottom: 0;
   left: 0;
-  right: 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 16px;
+  padding: 8px 14px;
   font: 11px/1 "JetBrains Mono", ui-monospace, monospace;
   color: #6b7a90;
-  background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%);
-  pointer-events: none;
+  cursor: pointer;
+  pointer-events: all;
   letter-spacing: 0.3px;
+  transition: background 0.2s;
+  border-radius: 0 6px 0 0;
+}
+.stats-strip:hover {
+  background: rgba(0,0,0,0.5);
+}
+.stats-strip.visible {
+  right: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%);
+  border-radius: 0;
 }
 .stats-strip strong {
   color: #a8b4c8;
@@ -101,4 +110,9 @@ body,
 }
 .stats-sep {
   opacity: 0.3;
+}
+.stats-toggle-hint {
+  font-size: 13px;
+  color: #374151;
+  line-height: 1;
 }

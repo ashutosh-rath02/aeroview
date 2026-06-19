@@ -43,6 +43,7 @@ export function Display() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const [showFsHint, setShowFsHint] = useState(true);
+  const [showStats, setShowStats] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setShowFsHint(false), 4000);
     return () => clearTimeout(t);
@@ -219,29 +220,37 @@ export function Display() {
           </span>
         </div>
       )}
-      {stats && (
-        <div className="stats-strip">
-          <span className="stats-count">{stats.count} visible</span>
-          <span className="stats-sep">·</span>
-          <span>
-            nearest&nbsp;
-            <strong>{stats.nearest.a.flight ?? stats.nearest.a.hex.toUpperCase()}</strong>
-            &nbsp;{stats.nearest.mi.toFixed(1)} mi
-          </span>
-          <span className="stats-sep">·</span>
-          <span>
-            fastest&nbsp;
-            <strong>{stats.fastest.flight ?? stats.fastest.hex.toUpperCase()}</strong>
-            &nbsp;{Math.round(stats.fastest.gs ?? 0)} kt
-          </span>
-          <span className="stats-sep">·</span>
-          <span>
-            highest&nbsp;
-            <strong>{stats.highest.flight ?? stats.highest.hex.toUpperCase()}</strong>
-            &nbsp;{((stats.highest.altBaro ?? stats.highest.altGeom ?? 0) / 1000).toFixed(0)}k ft
-          </span>
-        </div>
-      )}
+      <div
+        className={`stats-strip ${showStats && stats ? "visible" : ""}`}
+        onClick={() => setShowStats((s) => !s)}
+        title={showStats ? "click to hide" : "click to show stats"}
+      >
+        {showStats && stats ? (
+          <>
+            <span className="stats-count">{stats.count} visible</span>
+            <span className="stats-sep">·</span>
+            <span>
+              nearest&nbsp;
+              <strong>{stats.nearest.a.flight ?? stats.nearest.a.hex.toUpperCase()}</strong>
+              &nbsp;{stats.nearest.mi.toFixed(1)} mi
+            </span>
+            <span className="stats-sep">·</span>
+            <span>
+              fastest&nbsp;
+              <strong>{stats.fastest.flight ?? stats.fastest.hex.toUpperCase()}</strong>
+              &nbsp;{Math.round(stats.fastest.gs ?? 0)} kt
+            </span>
+            <span className="stats-sep">·</span>
+            <span>
+              highest&nbsp;
+              <strong>{stats.highest.flight ?? stats.highest.hex.toUpperCase()}</strong>
+              &nbsp;{((stats.highest.altBaro ?? stats.highest.altGeom ?? 0) / 1000).toFixed(0)}k ft
+            </span>
+          </>
+        ) : (
+          <span className="stats-toggle-hint">⊞</span>
+        )}
+      </div>
       {showFsHint && !document.fullscreenElement && (
         <div className="fs-hint">press F or double-click for fullscreen</div>
       )}

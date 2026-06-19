@@ -98,6 +98,7 @@ export interface Config {
 
   showDestArc: boolean;
   showRouteDetail: boolean;
+  vignette: boolean;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -178,6 +179,7 @@ export const DEFAULT_CONFIG: Config = {
 
   showDestArc: true,
   showRouteDetail: true,
+  vignette: true,
 };
 
 export function mergeConfig(base: Config, patch: Partial<Config>): Config {

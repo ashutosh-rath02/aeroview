@@ -433,6 +433,22 @@ export class Renderer {
 
     const pinned = this.pinnedHex ? visible.find((v) => v.tr.ac.hex === this.pinnedHex) : null;
     if (pinned) this.drawDetailPanel(cfg, pinned);
+
+    this.drawVignette(cfg);
+  }
+
+  private drawVignette(cfg: Config): void {
+    if (!cfg.vignette) return;
+    const ctx = this.ctx;
+    const cx = this.w / 2;
+    const cy = this.h / 2;
+    const inner = Math.min(cx, cy) * 0.45;
+    const outer = Math.sqrt(cx * cx + cy * cy);
+    const g = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(1, "rgba(0,0,0,1)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, this.w, this.h);
   }
 
   /**

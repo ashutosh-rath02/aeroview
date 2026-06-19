@@ -405,6 +405,9 @@ export function Control() {
         </Section>
 
         <Section title="Overlays">
+          <Row label="Vignette" hint="Fade edges to black so the screen border disappears on the ceiling">
+            <Toggle value={cfg.vignette} onChange={(v) => set({ vignette: v })} />
+          </Row>
           <Row label="Grid mode" hint="Square grid instead of range rings">
             <Toggle value={cfg.gridMode} onChange={(v) => set({ gridMode: v })} />
           </Row>

@@ -31,7 +31,7 @@ const POLL_MS = Number(process.env.POLL_MS ?? 1000);
 const ROUTE_CACHE_HOURS = Number(process.env.ROUTE_CACHE_HOURS ?? 12);
 // When on radio, also poll the API and merge (keeps landing aircraft alive).
 const SUPPLEMENT_API = (process.env.SUPPLEMENT_API ?? "1") !== "0";
-const API_POLL_MS = Number(process.env.API_POLL_MS ?? 4000);
+const API_POLL_MS = Number(process.env.API_POLL_MS ?? 2000);
 // Nominatim asks for a descriptive User-Agent identifying the application.
 const GEOCODE_UA =
   process.env.GEOCODE_USER_AGENT ??

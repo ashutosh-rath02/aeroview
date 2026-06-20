@@ -145,6 +145,7 @@ export class Renderer {
   private lastVisible: Visible[] = [];
   private hoveredHex: string | null = null;
   private pinnedHex: string | null = null;
+  private tileCache = new Map<string, HTMLImageElement | 'loading' | 'error'>();
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -356,6 +357,7 @@ export class Renderer {
       screenH: this.h,
     };
 
+    this.drawMapTiles(cfg, proj);
     this.updateSky(cfg, now);
     this.drawSky(cfg, proj);
     this.drawOverlays(cfg, proj);
@@ -619,6 +621,77 @@ export class Renderer {
     }
 
     ctx.restore();
+  }
+
+  // --- map tile background (CartoDB Dark Matter) ---
+
+  private static latLonToTile(lat: number, lon: number, z: number): { x: number; y: number } {
+    const n = 1 << z;
+    const x = Math.floor(((lon + 180) / 360) * n);
+    const latR = (lat * Math.PI) / 180;
+    const y = Math.floor(((1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2) * n);
+    return { x: Math.max(0, Math.min(n - 1, x)), y: Math.max(0, Math.min(n - 1, y)) };
+  }
+
+  private static tileTopLeft(tx: number, ty: number, z: number): { lat: number; lon: number } {
+    const n = 1 << z;
+    const lon = (tx / n) * 360 - 180;
+    const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * ty) / n))) * 180) / Math.PI;
+    return { lat, lon };
+  }
+
+  private drawTile(
+    img: HTMLImageElement,
+    tx: number,
+    ty: number,
+    tz: number,
+    cfg: Config,
+    proj: ProjOpts,
+  ): void {
+    const tl = Renderer.tileTopLeft(tx,     ty,     tz);
+    const tr = Renderer.tileTopLeft(tx + 1, ty,     tz);
+    const bl = Renderer.tileTopLeft(tx,     ty + 1, tz);
+    const tlP = project(llToMeters(tl.lat, tl.lon, cfg.centerLat, cfg.centerLon), proj);
+    const trP = project(llToMeters(tr.lat, tr.lon, cfg.centerLat, cfg.centerLon), proj);
+    const blP = project(llToMeters(bl.lat, bl.lon, cfg.centerLat, cfg.centerLon), proj);
+    // Affine: maps tile pixel (0,0)→tlP, (256,0)→trP, (0,256)→blP
+    const a = (trP.x - tlP.x) / 256;
+    const b = (trP.y - tlP.y) / 256;
+    const c = (blP.x - tlP.x) / 256;
+    const d = (blP.y - tlP.y) / 256;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.30;
+    ctx.setTransform(a, b, c, d, tlP.x, tlP.y);
+    ctx.drawImage(img, 0, 0, 256, 256);
+    ctx.restore();
+  }
+
+  private drawMapTiles(cfg: Config, proj: ProjOpts): void {
+    const R = cfg.radiusMiles;
+    // Pick zoom so roughly 3–4 tiles cover the radius
+    const z = R < 5 ? 13 : R < 10 ? 12 : R < 20 ? 11 : R < 40 ? 10 : R < 80 ? 9 : 8;
+    const servers = ["a", "b", "c"] as const;
+    const center = Renderer.latLonToTile(cfg.centerLat, cfg.centerLon, z);
+    // Tiles needed in each direction
+    const pad = Math.ceil(R / (360 / (1 << z) * 110)) + 2;
+    let si = 0;
+    for (let ty = center.y - pad; ty <= center.y + pad; ty++) {
+      for (let tx = center.x - pad; tx <= center.x + pad; tx++) {
+        const url = `https://${servers[si++ % 3]}.basemaps.cartocdn.com/dark_all/${z}/${tx}/${ty}.png`;
+        const cached = this.tileCache.get(url);
+        if (!cached) {
+          this.tileCache.set(url, "loading");
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload  = () => this.tileCache.set(url, img);
+          img.onerror = () => this.tileCache.set(url, "error");
+          img.src = url;
+        } else if (cached instanceof HTMLImageElement) {
+          this.drawTile(cached, tx, ty, z, cfg, proj);
+        }
+      }
+    }
   }
 
   // --- airport: runways at true geographic position ---
@@ -1045,15 +1118,6 @@ export class Renderer {
     }
 
     ctx.rotate(v.heading + Math.PI / 2);
-
-    // Soft halo — restrained so the silhouette reads as an aircraft.
-    const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 1.7);
-    halo.addColorStop(0, rgba(color, 0.16 * v.alpha));
-    halo.addColorStop(1, rgba(color, 0));
-    ctx.fillStyle = halo;
-    ctx.beginPath();
-    ctx.arc(0, 0, s * 1.7, 0, Math.PI * 2);
-    ctx.fill();
 
     drawAircraftGlyph(ctx, kind, s, color, v.alpha, this.frameT, hexSeed(v.tr.ac.hex));
     ctx.restore();

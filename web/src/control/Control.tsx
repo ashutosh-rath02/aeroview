@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Airport, Config, ShowFields, LocationProfile } from "@shared/index.js";
 import { formatLatLon } from "@shared/geo.js";
 import { useStream } from "../lib/useStream.js";
@@ -35,6 +35,7 @@ export function Control() {
   // Location editor (Nominatim via the server's /api/geocode).
   const [geoBusy, setGeoBusy] = useState(false);
   const [geoErr, setGeoErr] = useState<string | null>(null);
+  const autoLocDone = useRef(false);
 
   // Airport runway import (OurAirports via the server's /api/airport).
   const [apBusy, setApBusy] = useState(false);
@@ -56,6 +57,19 @@ export function Control() {
     () => (tles.length && cfg ? nextISSPass(Date.now(), cfg.centerLat, cfg.centerLon, tles) : null),
     [tles, cfg?.centerLat, cfg?.centerLon],
   );
+
+  // Auto-detect on first load if still on the factory-default SFO coords
+  useEffect(() => {
+    if (!cfg || autoLocDone.current) return;
+    const SFO_LAT = 37.6213, SFO_LON = -122.379;
+    if (Math.abs(cfg.centerLat - SFO_LAT) > 0.01 || Math.abs(cfg.centerLon - SFO_LON) > 0.01) return;
+    autoLocDone.current = true;
+    navigator.geolocation?.getCurrentPosition(
+      (p) => conn.patchConfig({ centerLat: p.coords.latitude, centerLon: p.coords.longitude, locationName: "Current location" }),
+      () => {},
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300_000 },
+    );
+  }, [!!cfg]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!cfg) {
     return (
@@ -405,6 +419,9 @@ export function Control() {
         </Section>
 
         <Section title="Overlays">
+          <Row label="3D sky dome" hint="Three.js hemisphere view — planes float at true azimuth + elevation (press 3 to toggle)">
+            <Toggle value={cfg.view3d} onChange={(v) => set({ view3d: v })} />
+          </Row>
           <Row label="Vignette" hint="Fade edges to black so the screen border disappears on the ceiling">
             <Toggle value={cfg.vignette} onChange={(v) => set({ vignette: v })} />
           </Row>
@@ -425,6 +442,33 @@ export function Control() {
           </Row>
           <Row label="On-screen HUD (display)">
             <Toggle value={cfg.showHud} onChange={(v) => set({ showHud: v })} />
+          </Row>
+        </Section>
+
+        <Section title="3D View">
+          <Row label="Disc opacity" hint="satellite map transparency">
+            <Slider value={cfg.discOpacity ?? 0.72} min={0.1} max={1} step={0.05}
+              onChange={(v) => set({ discOpacity: v })} />
+          </Row>
+          <Row label="Plane size" hint="scale 3D aircraft models">
+            <Slider value={cfg.planeSize3d ?? 1} min={0.2} max={5} step={0.1}
+              onChange={(v) => set({ planeSize3d: v })} />
+          </Row>
+          <Row label="Trail width" hint="neon tube radius">
+            <Slider value={cfg.trailWidth ?? 1} min={0.3} max={3} step={0.1}
+              onChange={(v) => set({ trailWidth: v })} />
+          </Row>
+          <Row label="Auto-rotate when idle" hint="spins after 10 s of no interaction">
+            <Toggle value={cfg.autoRotateIdle ?? true} onChange={(v) => set({ autoRotateIdle: v })} />
+          </Row>
+          {(cfg.autoRotateIdle ?? true) && (
+            <Row label="Rotation speed">
+              <Slider value={cfg.autoRotateSpeed ?? 0.5} min={0.1} max={4} step={0.1}
+                onChange={(v) => set({ autoRotateSpeed: v })} />
+            </Row>
+          )}
+          <Row label="Altitude rings" hint="ghosted circles at 10/20/30/40k ft">
+            <Toggle value={cfg.showAltRings3d ?? false} onChange={(v) => set({ showAltRings3d: v })} />
           </Row>
         </Section>
 

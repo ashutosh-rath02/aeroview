@@ -92,58 +92,74 @@ export function drawAircraftGlyph(
   t: number,
   seed: number,
 ): void {
-  ctx.shadowColor = col(color, 0.85 * alpha);
-  ctx.shadowBlur = s * 0.7;
-  ctx.fillStyle = col(color, Math.min(1, alpha * 1.08));
+  ctx.lineJoin = "round";
+  ctx.lineCap  = "round";
+  ctx.lineWidth = Math.max(1, s * 0.06);
 
   switch (kind) {
     case "widebody":
       jetBody(ctx, s, { fw: 0.22, nose: -1.16, tail: 1.06, span: 1.16, tipY: 0.5 });
-      fillAndEngines(ctx, s, color, alpha, [0.42, 0.66]);
+      addNacelles(ctx, s, [0.42, 0.66]);
+      solidGlyph(ctx, color, alpha, s);
       core(ctx, s, alpha, 0.1);
       break;
     case "quadjet":
       jetBody(ctx, s, { fw: 0.22, nose: -1.2, tail: 1.08, span: 1.2, tipY: 0.5 });
-      fillAndEngines(ctx, s, color, alpha, [0.34, 0.55, 0.74, 0.95].map((x) => x * 0.95));
+      addNacelles(ctx, s, [0.34, 0.55, 0.74, 0.95].map((x) => x * 0.95));
+      solidGlyph(ctx, color, alpha, s);
       core(ctx, s, alpha, 0.1);
       break;
     case "turboprop":
       jetBody(ctx, s, { fw: 0.2, nose: -1.0, tail: 0.96, span: 1.04, tipY: 0.34, straight: true });
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      // Props in place of nacelles, spinning.
+      solidGlyph(ctx, color, alpha, s);
       propDisc(ctx, -0.5 * s, 0.18 * s, 0.26 * s, color, alpha, t * 9 + seed);
       propDisc(ctx, 0.5 * s, 0.18 * s, 0.26 * s, color, alpha, -t * 9 + seed, true);
       core(ctx, s, alpha, 0.09);
       break;
     case "light":
       lightBody(ctx, s);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      // Single nose prop, spinning.
+      solidGlyph(ctx, color, alpha, s);
       propDisc(ctx, 0, -0.95 * s, 0.34 * s, color, alpha, t * 11 + seed);
       break;
     case "glider":
       gliderBody(ctx, s);
-      ctx.fill();
-      ctx.shadowBlur = 0;
+      solidGlyph(ctx, color, alpha, s);
       core(ctx, s, alpha, 0.07);
       break;
     case "helicopter":
       heliBody(ctx, s);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      // Tail rotor (small, fast) then main rotor (large, over the body).
+      solidGlyph(ctx, color, alpha, s);
       propDisc(ctx, 0.04 * s, 1.18 * s, 0.22 * s, color, alpha, t * 16 + seed, false, 2);
       mainRotor(ctx, s, color, alpha, t * 6 + seed);
       break;
     case "airliner":
     default:
       jetBody(ctx, s, { fw: 0.2, nose: -1.06, tail: 0.98, span: 1.05, tipY: 0.52 });
-      fillAndEngines(ctx, s, color, alpha, [0.46]);
+      addNacelles(ctx, s, [0.46]);
+      solidGlyph(ctx, color, alpha, s);
       core(ctx, s, alpha, 0.1);
       break;
   }
+}
+
+/**
+ * Fill the current path with the aircraft colour + a dark drop-shadow for
+ * depth, then overdraw a crisp white outline so the silhouette reads on any
+ * background — the same two-pass technique used by FR24 / FlightAware.
+ */
+function solidGlyph(
+  ctx: CanvasRenderingContext2D,
+  color: RGB,
+  alpha: number,
+  s: number,
+): void {
+  ctx.shadowColor = `rgba(0,0,0,0.70)`;
+  ctx.shadowBlur  = s * 0.28;
+  ctx.fillStyle   = col(color, alpha);
+  ctx.fill();
+  ctx.shadowBlur  = 0;
+  ctx.strokeStyle = `rgba(255,255,255,0.82)`;
+  ctx.stroke();
 }
 
 interface JetOpts {
@@ -183,22 +199,14 @@ function jetBody(ctx: CanvasRenderingContext2D, s: number, o: JetOpts): void {
   ctx.closePath();
 }
 
-/** Fill the traced jet body, then add engine nacelles at the given |x| offsets. */
-function fillAndEngines(
-  ctx: CanvasRenderingContext2D,
-  s: number,
-  color: RGB,
-  alpha: number,
-  xs: number[],
-): void {
+/** Append engine nacelle ellipses to the current path (filled by solidGlyph). */
+function addNacelles(ctx: CanvasRenderingContext2D, s: number, xs: number[]): void {
   for (const ex of xs) {
     for (const sign of [-1, 1]) {
       ctx.moveTo(sign * ex * s + 0.07 * s, 0.24 * s);
-      ctx.ellipse(sign * ex * s, 0.24 * s, 0.07 * s, 0.13 * s, 0, 0, Math.PI * 2);
+      ctx.ellipse(sign * ex * s, 0.24 * s, 0.07 * s, 0.14 * s, 0, 0, Math.PI * 2);
     }
   }
-  ctx.fillStyle = col(color, Math.min(1, alpha * 1.08));
-  ctx.fill();
 }
 
 /** Small high-wing single (Cessna-like). */

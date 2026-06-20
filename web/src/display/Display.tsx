@@ -3,22 +3,20 @@ import type { Config, Theme } from "@shared/index.js";
 import { DEFAULT_CONFIG } from "@shared/index.js";
 import { useStream } from "../lib/useStream.js";
 import { Renderer } from "./renderer.js";
+import { Renderer3D } from "./renderer3d.js";
 
 const THEMES: Theme[] = ["ambient", "telemetry", "focus"];
 
 let audioCtx: AudioContext | null = null;
 
-/** Boeing-style autopilot disconnect: cavalry-charge G→C→E→G, played twice. */
 function apDisconnect(): void {
   try {
     audioCtx ??= new AudioContext();
     const ctx = audioCtx;
-    // Cavalry charge notes (Hz) and relative durations
-    const notes = [392, 523, 659, 784]; // G4 C5 E5 G5
+    const notes = [392, 523, 659, 784];
     const noteDur = 0.09;
     const gap = 0.01;
     const repeatDelay = 0.45;
-
     for (let rep = 0; rep < 2; rep++) {
       notes.forEach((freq, i) => {
         const t = ctx.currentTime + rep * repeatDelay + i * (noteDur + gap);
@@ -38,24 +36,38 @@ function apDisconnect(): void {
   } catch { /* audio blocked */ }
 }
 
+type AnyRenderer = {
+  togglePin(x: number, y: number): void;
+  setHover(x: number, y: number): void;
+  update(aircraft: Parameters<Renderer["update"]>[0]): void;
+  setSourceOk(ok: boolean): void;
+};
+
 export function Display() {
   const { state, conn } = useStream("display");
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<Renderer | null>(null);
+
+  // Two canvas refs — 2D and 3D — only one visible at a time
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
+  const canvas3dRef  = useRef<HTMLCanvasElement>(null);
+  const container3dRef = useRef<HTMLDivElement>(null);
+
+  const rendererRef  = useRef<AnyRenderer | null>(null);
+  const configRef    = useRef<Config>(state.config ?? DEFAULT_CONFIG);
+  configRef.current  = state.config ?? DEFAULT_CONFIG;
+
   const [showFsHint, setShowFsHint] = useState(true);
-  const [showStats, setShowStats] = useState(false);
+  const [showStats,  setShowStats]  = useState(false);
+
   useEffect(() => {
     const t = setTimeout(() => setShowFsHint(false), 4000);
     return () => clearTimeout(t);
   }, []);
 
-  // Keep the latest config in a ref so the RAF loop always reads fresh values.
-  const configRef = useRef<Config>(state.config ?? DEFAULT_CONFIG);
-  configRef.current = state.config ?? DEFAULT_CONFIG;
+  const view3d = state.config?.view3d ?? false;
 
-  // Create renderer once.
+  // 2D renderer — active when view3d is false
   useEffect(() => {
-    if (!canvasRef.current) return;
+    if (view3d || !canvasRef.current) return;
     const r = new Renderer(canvasRef.current, () => configRef.current);
     rendererRef.current = r;
     r.start();
@@ -66,71 +78,81 @@ export function Display() {
       r.stop();
       rendererRef.current = null;
     };
-  }, []);
+  }, [view3d]);
 
-  // Feed snapshots.
+  // 3D renderer — active when view3d is true
+  useEffect(() => {
+    if (!view3d || !canvas3dRef.current || !container3dRef.current) return;
+    const r = new Renderer3D(canvas3dRef.current, container3dRef.current, () => configRef.current);
+    rendererRef.current = r;
+    r.start();
+    const onResize = () => r.resize();
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      r.stop();
+      rendererRef.current = null;
+    };
+  }, [view3d]);
+
+  // Feed snapshots to whichever renderer is active
   useEffect(() => {
     rendererRef.current?.update(state.aircraft);
   }, [state.now, state.aircraft]);
 
-  // Source health: during an outage the renderer holds planes instead of
-  // staling them out. A dropped WebSocket counts as an outage too.
+  // Source health
   useEffect(() => {
     rendererRef.current?.setSourceOk(state.connected && (state.status?.ok ?? true));
   }, [state.connected, state.status]);
 
-  // Mouse hover + click — pass canvas-local coords to the renderer.
+  // Mouse events — attach to both canvases; only the visible one fires
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const onMove = (e: MouseEvent) => {
-      const r = canvas.getBoundingClientRect();
-      rendererRef.current?.setHover(e.clientX - r.left, e.clientY - r.top);
+    const attach = (canvas: HTMLCanvasElement | null) => {
+      if (!canvas) return () => {};
+      const onMove = (e: MouseEvent) => {
+        const r = canvas.getBoundingClientRect();
+        rendererRef.current?.setHover(e.clientX - r.left, e.clientY - r.top);
+      };
+      const onLeave = () => rendererRef.current?.setHover(-999, -999);
+      const onClick = (e: MouseEvent) => {
+        const r = canvas.getBoundingClientRect();
+        rendererRef.current?.togglePin(e.clientX - r.left, e.clientY - r.top);
+      };
+      const onDbl = () => {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+        else document.exitFullscreen?.();
+      };
+      canvas.addEventListener("mousemove", onMove);
+      canvas.addEventListener("mouseleave", onLeave);
+      canvas.addEventListener("click", onClick);
+      canvas.addEventListener("dblclick", onDbl);
+      return () => {
+        canvas.removeEventListener("mousemove", onMove);
+        canvas.removeEventListener("mouseleave", onLeave);
+        canvas.removeEventListener("click", onClick);
+        canvas.removeEventListener("dblclick", onDbl);
+      };
     };
-    const onLeave = () => rendererRef.current?.setHover(-999, -999);
-    const onClick = (e: MouseEvent) => {
-      const r = canvas.getBoundingClientRect();
-      rendererRef.current?.togglePin(e.clientX - r.left, e.clientY - r.top);
-    };
-    const onDblClick = () => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen?.();
-      } else {
-        document.exitFullscreen?.();
-      }
-    };
-    canvas.addEventListener("mousemove", onMove);
-    canvas.addEventListener("mouseleave", onLeave);
-    canvas.addEventListener("click", onClick);
-    canvas.addEventListener("dblclick", onDblClick);
-    return () => {
-      canvas.removeEventListener("mousemove", onMove);
-      canvas.removeEventListener("mouseleave", onLeave);
-      canvas.removeEventListener("click", onClick);
-      canvas.removeEventListener("dblclick", onDblClick);
-    };
+    const c1 = attach(canvasRef.current);
+    const c2 = attach(canvas3dRef.current);
+    return () => { c1(); c2(); };
   }, []);
 
-  // Sound alert: beep once when a new aircraft enters the visible radius.
+  // Sound alert on new arrivals
   const alertedRef = useRef(new Set<string>());
   useEffect(() => {
     const cfg = configRef.current;
     const alerted = alertedRef.current;
     const nowHexes = new Set(state.aircraft.map((a) => a.hex));
-
-    // Remove aircraft that have left so they can beep again if they return.
     for (const hex of alerted) {
       if (!nowHexes.has(hex)) alerted.delete(hex);
     }
-
     for (const ac of state.aircraft) {
       if (ac.lat == null || ac.lon == null) continue;
       if (alerted.has(ac.hex)) continue;
-
       const dLat = ac.lat - cfg.centerLat;
       const dLon = (ac.lon - cfg.centerLon) * Math.cos(cfg.centerLat * Math.PI / 180);
       const rangeMi = Math.sqrt(dLat * dLat + dLon * dLon) * 69;
-
       if (rangeMi <= cfg.radiusMiles) {
         alerted.add(ac.hex);
         apDisconnect();
@@ -138,44 +160,28 @@ export function Display() {
     }
   }, [state.aircraft, state.now]);
 
-  // Keyboard calibration (handy when a keyboard is plugged into the Pi).
+  // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const c = configRef.current;
       switch (e.key) {
-        case "r":
-          conn.patchConfig({ rotationDeg: (c.rotationDeg + 5) % 360 });
-          break;
-        case "R":
-          conn.patchConfig({ rotationDeg: (c.rotationDeg - 5 + 360) % 360 });
-          break;
-        case "m":
-          conn.patchConfig({ mirrorX: !c.mirrorX });
-          break;
-        case "M":
-          conn.patchConfig({ mirrorY: !c.mirrorY });
-          break;
+        case "r": conn.patchConfig({ rotationDeg: (c.rotationDeg + 5) % 360 }); break;
+        case "R": conn.patchConfig({ rotationDeg: (c.rotationDeg - 5 + 360) % 360 }); break;
+        case "m": conn.patchConfig({ mirrorX: !c.mirrorX }); break;
+        case "M": conn.patchConfig({ mirrorY: !c.mirrorY }); break;
         case "t": {
           const next = THEMES[(THEMES.indexOf(c.theme) + 1) % THEMES.length];
           conn.patchConfig({ theme: next });
           break;
         }
-        case "[":
-          conn.patchConfig({ radiusMiles: Math.max(0.5, c.radiusMiles - 0.5) });
-          break;
-        case "]":
-          conn.patchConfig({ radiusMiles: c.radiusMiles + 0.5 });
-          break;
-        case "h":
-          conn.patchConfig({ showHud: !c.showHud });
-          break;
+        case "[": conn.patchConfig({ radiusMiles: Math.max(0.5, c.radiusMiles - 0.5) }); break;
+        case "]": conn.patchConfig({ radiusMiles: c.radiusMiles + 0.5 }); break;
+        case "h": conn.patchConfig({ showHud: !c.showHud }); break;
+        case "3": conn.patchConfig({ view3d: !c.view3d }); break;
         case "f":
         case "F":
-          if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen?.();
-          } else {
-            document.exitFullscreen?.();
-          }
+          if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+          else document.exitFullscreen?.();
           break;
         case "s":
         case "S":
@@ -192,9 +198,7 @@ export function Display() {
   const stats = useMemo(() => {
     if (!cfg) return null;
     const cos = Math.cos(cfg.centerLat * Math.PI / 180);
-    const positioned = state.aircraft.filter(
-      (a) => a.lat != null && a.lon != null,
-    );
+    const positioned = state.aircraft.filter((a) => a.lat != null && a.lon != null);
     if (!positioned.length) return null;
     const withDist = positioned.map((a) => {
       const dLat = a.lat! - cfg.centerLat;
@@ -202,9 +206,7 @@ export function Display() {
       return { a, mi: Math.sqrt(dLat * dLat + dLon * dLon) * 69 };
     });
     const nearest = withDist.reduce((x, y) => (x.mi < y.mi ? x : y));
-    const fastest = positioned.reduce((x, y) =>
-      (y.gs ?? 0) > (x.gs ?? 0) ? y : x,
-    );
+    const fastest = positioned.reduce((x, y) => ((y.gs ?? 0) > (x.gs ?? 0) ? y : x));
     const highest = positioned.reduce((x, y) =>
       ((y.altBaro ?? y.altGeom ?? 0) > (x.altBaro ?? x.altGeom ?? 0) ? y : x),
     );
@@ -213,17 +215,35 @@ export function Display() {
 
   return (
     <div className="display-root">
-      <canvas ref={canvasRef} className="display-canvas" />
+      {/* 2D canvas */}
+      <canvas
+        ref={canvasRef}
+        className="display-canvas"
+        style={{ display: view3d ? "none" : "block" }}
+      />
+
+      {/* 3D container — Three.js injects its CSS2D label overlay here */}
+      <div
+        ref={container3dRef}
+        style={{
+          display: view3d ? "block" : "none",
+          position: "absolute",
+          inset: 0,
+        }}
+      >
+        <canvas ref={canvas3dRef} className="display-canvas" />
+      </div>
+
       {cfg?.showHud && (
         <div className="hud">
           <div className={`hud-dot ${state.connected ? "ok" : "bad"}`} />
           <span>
             {state.status?.source ?? "—"} · {state.aircraft.length} ac ·{" "}
-            rot {cfg.rotationDeg}° · mirror {cfg.mirrorX ? "X" : "–"}
-            {cfg.mirrorY ? "Y" : ""} · r {cfg.radiusMiles}mi · {cfg.projectionMode} · {cfg.theme}
+            rot {cfg.rotationDeg}° · {view3d ? "3D" : cfg.projectionMode} · {cfg.theme}
           </span>
         </div>
       )}
+
       {showStats && stats && (
         <div className="stats-strip" onClick={() => setShowStats(false)}>
           <span className="stats-count">{stats.count} visible</span>
@@ -247,8 +267,9 @@ export function Display() {
           </span>
         </div>
       )}
+
       {showFsHint && !document.fullscreenElement && (
-        <div className="fs-hint">press F or double-click for fullscreen</div>
+        <div className="fs-hint">press F or double-click for fullscreen · 3 for 3D mode</div>
       )}
       {!state.connected && <div className="reconnect">connecting…</div>}
     </div>

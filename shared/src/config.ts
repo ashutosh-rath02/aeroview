@@ -99,6 +99,15 @@ export interface Config {
   showDestArc: boolean;
   showRouteDetail: boolean;
   vignette: boolean;
+  view3d: boolean;
+
+  // 3-D view tweaks
+  discOpacity:     number;
+  autoRotateIdle:  boolean;
+  autoRotateSpeed: number;
+  showAltRings3d:  boolean;
+  trailWidth:      number;
+  planeSize3d:     number;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -180,6 +189,14 @@ export const DEFAULT_CONFIG: Config = {
   showDestArc: true,
   showRouteDetail: true,
   vignette: true,
+  view3d: false,
+
+  discOpacity:     0.72,
+  autoRotateIdle:  true,
+  autoRotateSpeed: 0.5,
+  showAltRings3d:  false,
+  trailWidth:      1.0,
+  planeSize3d:     1.0,
 };
 
 export function mergeConfig(base: Config, patch: Partial<Config>): Config {
